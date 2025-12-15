@@ -5,7 +5,7 @@ import { useData } from '../context';
 import { generateCreativeContent } from '../services/geminiService';
 import { Project, Brand } from '../types';
 import { auth } from '../firebaseConfig';
-import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'firebase/auth';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from 'firebase/auth';
 
 const Admin: React.FC = () => {
   // Auth State
@@ -13,6 +13,7 @@ const Admin: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
+  const [isRegistering, setIsRegistering] = useState(false);
 
   // Data
   const { 
@@ -48,14 +49,26 @@ const Admin: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
     try {
-        await signInWithEmailAndPassword(auth, email, password);
+        if (isRegistering) {
+            await createUserWithEmailAndPassword(auth, email, password);
+        } else {
+            await signInWithEmailAndPassword(auth, email, password);
+        }
     } catch (error: any) {
         console.error(error);
-        setLoginError('Authentication Failed: Invalid Credentials');
+        if (error.code === 'auth/invalid-credential') {
+            setLoginError('Invalid Email or Password.');
+        } else if (error.code === 'auth/invalid-api-key') {
+             setLoginError('Invalid API Key in config.');
+        } else if (error.code === 'auth/weak-password') {
+             setLoginError('Password should be at least 6 characters.');
+        } else {
+            setLoginError(error.message);
+        }
     }
   };
 
@@ -103,11 +116,22 @@ const Admin: React.FC = () => {
               <div className="flex justify-center mb-6 text-alert"><Lock size={48} /></div>
               <h2 className="text-3xl font-display text-center uppercase text-white mb-2">Restricted Access</h2>
               <p className="text-center text-zinc-500 font-mono text-xs mb-6">Firebase Secure Login</p>
-              <form onSubmit={handleLogin} className="space-y-6">
+              
+              <form onSubmit={handleAuth} className="space-y-6">
                   <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-black border border-zinc-700 p-3 text-white focus:border-alert focus:outline-none" placeholder="Admin Email" />
                   <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-black border border-zinc-700 p-3 text-white focus:border-alert focus:outline-none" placeholder="Password" />
-                  {loginError && <p className="text-alert text-xs text-center">{loginError}</p>}
-                  <button type="submit" className="w-full bg-alert text-white py-3 font-bold uppercase tracking-widest hover:bg-red-700 transition-colors">Authenticate</button>
+                  
+                  {loginError && <p className="text-alert text-xs text-center border border-alert/20 p-2 bg-alert/10">{loginError}</p>}
+                  
+                  <button type="submit" className="w-full bg-alert text-white py-3 font-bold uppercase tracking-widest hover:bg-red-700 transition-colors">
+                      {isRegistering ? 'Initialize Warden Protocol (Sign Up)' : 'Authenticate'}
+                  </button>
+
+                  <div className="text-center">
+                      <button type="button" onClick={() => setIsRegistering(!isRegistering)} className="text-xs text-zinc-500 hover:text-white underline">
+                          {isRegistering ? 'Return to Login' : 'First time? Create Access Key'}
+                      </button>
+                  </div>
               </form>
           </div>
         </div>
@@ -138,9 +162,12 @@ const Admin: React.FC = () => {
             </button>
           </nav>
           
-          <button onClick={handleLogout} className="text-zinc-500 hover:text-white font-mono text-xs uppercase mt-4 mb-4 text-left">Log Out</button>
+          <div className="mt-auto">
+             <p className="text-[10px] text-zinc-600 font-mono mb-2">User: {currentUser.email}</p>
+             <button onClick={handleLogout} className="text-zinc-500 hover:text-white font-mono text-xs uppercase mb-4 text-left w-full">Log Out</button>
+          </div>
 
-          <Link to="/" className="flex items-center gap-2 text-zinc-600 hover:text-alert mt-auto font-mono text-xs uppercase tracking-widest">
+          <Link to="/" className="flex items-center gap-2 text-zinc-600 hover:text-alert font-mono text-xs uppercase tracking-widest">
             <ArrowLeft size={14} /> Exit Facility
           </Link>
         </aside>

@@ -4,7 +4,11 @@ import { getAnalytics } from "firebase/analytics";
 import { getFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
-// Your web app's Firebase configuration
+// TODO: REPLACE WITH YOUR ACTUAL FIREBASE PROJECT CONFIGURATION
+// 1. Go to https://console.firebase.google.com/
+// 2. Create a project (or select existing)
+// 3. Go to Project Settings -> General -> Your apps -> Web app
+// 4. Copy the config object and paste it here
 const firebaseConfig = {
   apiKey: "AIzaSyD2R8aqMApu_tvGO-1wQlR2GISCRzkCVCI",
   authDomain: "mahmoud-osama1465.firebaseapp.com",
