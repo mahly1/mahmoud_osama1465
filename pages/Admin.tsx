@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Save, Sparkles, Lock, User, Plus, Trash2, FolderOpen, Menu, LayoutTemplate, Briefcase, Tag } from 'lucide-react';
+import { ArrowLeft, Save, Sparkles, Lock, User, Plus, Trash2, FolderOpen, Menu, LayoutTemplate, Briefcase, Tag, Database } from 'lucide-react';
 import { useData } from '../context';
 import { generateCreativeContent } from '../services/geminiService';
 import { Project, Brand } from '../types';
-import { auth } from '../firebaseConfig';
+import { auth, db } from '../firebaseConfig';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from 'firebase/auth';
+import { writeBatch, doc } from 'firebase/firestore';
 
 const Admin: React.FC = () => {
   // Auth State
@@ -74,6 +75,55 @@ const Admin: React.FC = () => {
 
   const handleLogout = () => {
       signOut(auth);
+  };
+
+  // --- SEED DATABASE FUNCTION ---
+  const handleSeedDatabase = async () => {
+    if (!confirm("This will inject default data (Services, Industries, Sample Brands) into your database. Continue?")) return;
+    
+    try {
+        const batch = writeBatch(db);
+
+        // 1. Default Services
+        const servicesData = [
+            { id: "01", title: "Content Creation", description: "High-end visual storytelling", details: "Full production services including videography, photography, and creative direction.", iconName: "Camera" },
+            { id: "02", title: "Marketing Strategy", description: "Data-driven growth protocols", details: "Comprehensive market analysis, campaign planning, and brand positioning.", iconName: "Map" },
+            { id: "03", title: "Video Editing", description: "Cinematic post-production", details: "Advanced editing, color grading, sound design, and VFX.", iconName: "Film" },
+            { id: "04", title: "Brand Identity", description: "Visual language design", details: "Logo design, typography, and complete visual identity systems.", iconName: "PenTool" }
+        ];
+
+        servicesData.forEach(s => {
+            batch.set(doc(db, "services", s.id), s);
+        });
+
+        // 2. Default Industries
+        const industriesData = [
+            { id: "ind_01", name: "Real Estate", iconName: "Building", brands: ["Emaar", "Damac"] },
+            { id: "ind_02", name: "Automotive", iconName: "Car", brands: ["BMW", "Mercedes"] },
+            { id: "ind_03", name: "Fashion", iconName: "Shirt", brands: ["Zara", "H&M"] },
+            { id: "ind_04", name: "Tech", iconName: "Cpu", brands: ["Samsung", "Apple"] }
+        ];
+
+        industriesData.forEach(i => {
+            batch.set(doc(db, "industries", i.id), i);
+        });
+
+        // 3. Sample Brands
+        const brandsData = [
+            { id: "brand_01", name: "Sample Brand A", description: "Real Estate Giant" },
+            { id: "brand_02", name: "Sample Brand B", description: "Tech Startup" }
+        ];
+        brandsData.forEach(b => {
+            batch.set(doc(db, "brands", b.id), b);
+        });
+
+        await batch.commit();
+        alert("System Initialize Successfully! Data injected.");
+        window.location.reload();
+    } catch (e: any) {
+        console.error(e);
+        alert("Error seeding database: " + e.message);
+    }
   };
 
   const handleSaveContent = () => {
@@ -176,10 +226,16 @@ const Admin: React.FC = () => {
         <main className="flex-1 overflow-y-auto p-10 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-zinc-900 via-black to-black">
           
           {/* HEADER */}
-          <header className="mb-10 border-b border-zinc-800 pb-6">
+          <header className="mb-10 border-b border-zinc-800 pb-6 flex justify-between items-center">
             <h1 className="text-3xl font-display uppercase text-white">
                 {activeTab.toUpperCase()} CONFIGURATION
             </h1>
+            {/* Quick Action for Empty States */}
+            {services.length === 0 && (
+                <button onClick={handleSeedDatabase} className="flex items-center gap-2 bg-zinc-800 hover:bg-alert text-white px-4 py-2 text-xs uppercase font-bold tracking-widest transition-colors border border-zinc-700">
+                    <Database size={14} /> Initialize System Data
+                </button>
+            )}
           </header>
 
           {/* HOME TAB */}
@@ -224,7 +280,17 @@ const Admin: React.FC = () => {
                          <textarea value={s.details} onChange={e => updateService(s.id, {details: e.target.value})} className="w-full bg-transparent text-sm text-zinc-400 border border-transparent focus:border-zinc-700 focus:outline-none p-2" rows={2} />
                      </div>
                  ))}
-                 {services.length === 0 && <p className="text-zinc-500">Initializing DB...</p>}
+                 
+                 {services.length === 0 && (
+                    <div className="flex flex-col items-center justify-center py-20 border border-dashed border-zinc-800 bg-zinc-900/20">
+                        <Database className="text-zinc-600 mb-4" size={48} />
+                        <h3 className="text-xl font-display uppercase text-zinc-500 mb-2">Database Empty</h3>
+                        <p className="text-zinc-600 font-mono text-xs mb-6">No services found in Firestore.</p>
+                        <button onClick={handleSeedDatabase} className="bg-alert text-white px-6 py-3 uppercase font-bold text-sm hover:bg-red-700 tracking-widest">
+                            Initialize System Defaults
+                        </button>
+                    </div>
+                 )}
              </div>
           )}
 
