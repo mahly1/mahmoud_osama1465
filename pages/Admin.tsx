@@ -1,13 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Save, Sparkles, Lock, User, Plus, Trash2, FolderOpen, Menu, LayoutTemplate, Briefcase, Tag } from 'lucide-react';
 import { useData } from '../context';
 import { generateCreativeContent } from '../services/geminiService';
 import { Project, Brand } from '../types';
+import { auth } from '../firebaseConfig';
+import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'firebase/auth';
 
 const Admin: React.FC = () => {
   // Auth State
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [currentUser, setCurrentUser] = useState<any>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -20,36 +22,56 @@ const Admin: React.FC = () => {
     addProject, updateProject, deleteProject 
   } = useData();
 
-  // Navigation Tabs (Matching Public Pages + Evidence)
+  // Navigation Tabs
   const [activeTab, setActiveTab] = useState<'home' | 'about' | 'services' | 'brands' | 'contact' | 'evidence'>('home');
   
   // State for adding items
   const [newProject, setNewProject] = useState<Partial<Project>>({ title: '', description: '', images: [], serviceId: services[0]?.id, brandId: brands[0]?.id, mainButton: { label: '', link: '' } });
   const [newBrand, setNewBrand] = useState<Partial<Brand>>({ name: '', description: '' });
   
-  // Helper for Project Images (simple comma separated for now)
+  // Helper for Project Images
   const [imageInput, setImageInput] = useState('');
 
-  // Local Content State (Form Buffers)
+  // Local Content State
   const [localContent, setLocalContent] = useState(content);
 
-  const handleLogin = (e: React.FormEvent) => {
+  // Sync Local Content when DB Content loads
+  useEffect(() => {
+    setLocalContent(content);
+  }, [content]);
+
+  // Check Auth Status
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+        setCurrentUser(user);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (email === 'admin@mahmoudosama.com' && password === 'password') {
-      setIsAuthenticated(true);
-    } else {
-      setLoginError('Access Denied');
+    setLoginError('');
+    try {
+        await signInWithEmailAndPassword(auth, email, password);
+    } catch (error: any) {
+        console.error(error);
+        setLoginError('Authentication Failed: Invalid Credentials');
     }
+  };
+
+  const handleLogout = () => {
+      signOut(auth);
   };
 
   const handleSaveContent = () => {
     updateContent(localContent);
-    alert("Protocol Updated");
+    alert("Protocol Updated via Secure Link");
   };
 
   const handleAddBrand = () => {
     if (newBrand.name) {
-        addBrand({ id: Date.now().toString(), name: newBrand.name!, description: newBrand.description || '' });
+        // ID is handled by Firebase
+        addBrand({ id: '', name: newBrand.name!, description: newBrand.description || '' });
         setNewBrand({ name: '', description: '' });
     }
   };
@@ -57,8 +79,9 @@ const Admin: React.FC = () => {
   const handleAddProject = () => {
     if (newProject.title && newProject.serviceId && newProject.brandId) {
         const imgs = imageInput.split(',').map(s => s.trim()).filter(s => s);
+        // ID handled by Firebase
         addProject({
-            id: Date.now().toString(),
+            id: '',
             title: newProject.title!,
             description: newProject.description || '',
             images: imgs.length > 0 ? imgs : ['https://picsum.photos/800/600'],
@@ -71,8 +94,7 @@ const Admin: React.FC = () => {
     }
   };
 
-  if (!isAuthenticated) {
-     // Login Screen (Same as before)
+  if (!currentUser) {
      return (
         <div className="min-h-screen bg-black flex items-center justify-center relative overflow-hidden">
           <div className="scanlines"></div>
@@ -80,9 +102,10 @@ const Admin: React.FC = () => {
           <div className="relative z-10 w-full max-w-md p-8 bg-zinc-900/50 border border-zinc-800 backdrop-blur-md">
               <div className="flex justify-center mb-6 text-alert"><Lock size={48} /></div>
               <h2 className="text-3xl font-display text-center uppercase text-white mb-2">Restricted Access</h2>
+              <p className="text-center text-zinc-500 font-mono text-xs mb-6">Firebase Secure Login</p>
               <form onSubmit={handleLogin} className="space-y-6">
-                  <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-black border border-zinc-700 p-3 text-white focus:border-alert focus:outline-none" placeholder="Identifier" />
-                  <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-black border border-zinc-700 p-3 text-white focus:border-alert focus:outline-none" placeholder="Passcode" />
+                  <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-black border border-zinc-700 p-3 text-white focus:border-alert focus:outline-none" placeholder="Admin Email" />
+                  <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-black border border-zinc-700 p-3 text-white focus:border-alert focus:outline-none" placeholder="Password" />
                   {loginError && <p className="text-alert text-xs text-center">{loginError}</p>}
                   <button type="submit" className="w-full bg-alert text-white py-3 font-bold uppercase tracking-widest hover:bg-red-700 transition-colors">Authenticate</button>
               </form>
@@ -114,6 +137,8 @@ const Admin: React.FC = () => {
                 <FolderOpen size={14} /> Evidence (Projects)
             </button>
           </nav>
+          
+          <button onClick={handleLogout} className="text-zinc-500 hover:text-white font-mono text-xs uppercase mt-4 mb-4 text-left">Log Out</button>
 
           <Link to="/" className="flex items-center gap-2 text-zinc-600 hover:text-alert mt-auto font-mono text-xs uppercase tracking-widest">
             <ArrowLeft size={14} /> Exit Facility
@@ -172,6 +197,7 @@ const Admin: React.FC = () => {
                          <textarea value={s.details} onChange={e => updateService(s.id, {details: e.target.value})} className="w-full bg-transparent text-sm text-zinc-400 border border-transparent focus:border-zinc-700 focus:outline-none p-2" rows={2} />
                      </div>
                  ))}
+                 {services.length === 0 && <p className="text-zinc-500">Initializing DB...</p>}
              </div>
           )}
 
@@ -241,7 +267,7 @@ const Admin: React.FC = () => {
                          const pService = services.find(s => s.id === p.serviceId);
                          return (
                             <div key={p.id} className="flex gap-4 p-4 bg-black border border-zinc-800 relative group">
-                                <img src={p.images[0]} className="w-24 h-24 object-cover border border-zinc-800" alt="thumb" />
+                                {p.images && p.images[0] && <img src={p.images[0]} className="w-24 h-24 object-cover border border-zinc-800" alt="thumb" />}
                                 <div className="flex-1">
                                     <div className="flex gap-2 mb-2">
                                         <span className="text-[10px] bg-zinc-900 text-zinc-400 px-2 py-1 uppercase">{pService?.title}</span>

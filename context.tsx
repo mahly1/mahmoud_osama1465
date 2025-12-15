@@ -1,6 +1,19 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { AppState, SiteContent, Service, Project, Brand, Industry } from './types';
+import { db } from './firebaseConfig';
+import { 
+  collection, 
+  onSnapshot, 
+  doc, 
+  updateDoc, 
+  setDoc, 
+  addDoc, 
+  deleteDoc, 
+  query, 
+  orderBy 
+} from 'firebase/firestore';
 
+// Default Fallback Data (Used while loading or if DB is empty)
 const defaultContent: SiteContent = {
   heroTitle: "LOCKDOWN LIFTED",
   heroSubtitle: "Most brands are serving a life sentence in mediocrity. I engineer the breakout.",
@@ -14,68 +27,105 @@ const defaultContent: SiteContent = {
   }
 };
 
-const defaultServices: Service[] = [
-  { id: 'A', title: 'Content Creation', description: 'Visual evidence that demands attention.', details: 'We manufacture contraband content that smugglers into the minds of your audience.', iconName: 'Camera' },
-  { id: 'B', title: 'Strategy', description: 'The escape plan.', details: 'Every breakout needs a blueprint. We analyze the security systems of your market.', iconName: 'Map' },
-  { id: 'C', title: 'Video Editing', description: 'Narrative manipulation.', details: 'Cutting the footage to frame the narrative exactly how we want it.', iconName: 'Film' },
-  { id: 'D', title: 'Brand Design', description: 'Identity reform.', details: 'Stripping away the old inmate number and giving your brand a new, powerful identity.', iconName: 'PenTool' },
-];
-
-const defaultBrands: Brand[] = [
-  { id: '1', name: 'BMW Local', description: 'Automotive Giant' },
-  { id: '2', name: 'StreetWare', description: 'Urban Fashion' },
-  { id: '3', name: 'Skyline', description: 'Real Estate Moguls' },
-];
-
-const defaultIndustries: Industry[] = [
-    { id: '1', name: 'Automotive', iconName: 'Car', brands: ['BMW Local', 'Mercedes', 'Toyota'] },
-    { id: '2', name: 'Real Estate', iconName: 'Building', brands: ['Skyline', 'Emaar', 'Damac'] },
-    { id: '3', name: 'Tech', iconName: 'Cpu', brands: ['Logitech', 'Razer', 'Intel'] },
-    { id: '4', name: 'Fashion', iconName: 'Shirt', brands: ['StreetWare', 'Adidas', 'Zara'] }
-];
-
-const defaultProjects: Project[] = [
-  { 
-    id: '1', 
-    title: 'Operation: Neon', 
-    description: 'A high-speed chase through the city streets at night.',
-    images: ['https://picsum.photos/800/600?random=1', 'https://picsum.photos/800/600?random=11'],
-    mainButton: { label: 'View Commercial', link: '#' },
-    serviceId: 'A',
-    brandId: '1'
-  },
-  { 
-    id: '2', 
-    title: 'The Breakout Collection', 
-    description: 'Launching the winter line with a prison-break theme.',
-    images: ['https://picsum.photos/800/600?random=2'],
-    mainButton: { label: 'View Lookbook', link: '#' },
-    serviceId: 'D',
-    brandId: '2'
-  },
-];
-
 const DataContext = createContext<AppState | undefined>(undefined);
 
 export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [content, setContent] = useState<SiteContent>(defaultContent);
-  const [services, setServices] = useState<Service[]>(defaultServices);
-  const [brands, setBrands] = useState<Brand[]>(defaultBrands);
-  const [projects, setProjects] = useState<Project[]>(defaultProjects);
-  const [industries] = useState<Industry[]>(defaultIndustries);
+  const [services, setServices] = useState<Service[]>([]);
+  const [brands, setBrands] = useState<Brand[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [industries, setIndustries] = useState<Industry[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const updateContent = (newContent: Partial<SiteContent>) => setContent(prev => ({ ...prev, ...newContent }));
-  const updateService = (id: string, newService: Partial<Service>) => setServices(prev => prev.map(s => s.id === id ? { ...s, ...newService } : s));
+  // --- Real-time Data Listeners ---
+
+  useEffect(() => {
+    // 1. Fetch Site Content (Single Document 'main' in 'content' collection)
+    const unsubContent = onSnapshot(doc(db, "content", "main"), (doc) => {
+        if (doc.exists()) {
+            setContent(doc.data() as SiteContent);
+        } else {
+            // Initialize DB if empty
+            setDoc(doc.ref, defaultContent); 
+        }
+    });
+
+    // 2. Fetch Services
+    const unsubServices = onSnapshot(collection(db, "services"), (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Service));
+        // Sort by ID or any field if needed
+        setServices(data.sort((a,b) => a.id.localeCompare(b.id)));
+    });
+
+    // 3. Fetch Brands
+    const unsubBrands = onSnapshot(collection(db, "brands"), (snapshot) => {
+        setBrands(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Brand)));
+    });
+
+    // 4. Fetch Projects
+    const unsubProjects = onSnapshot(collection(db, "projects"), (snapshot) => {
+        setProjects(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project)));
+    });
+
+    // 5. Fetch Industries
+    const unsubIndustries = onSnapshot(collection(db, "industries"), (snapshot) => {
+        setIndustries(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Industry)));
+    });
+
+    setLoading(false);
+
+    return () => {
+        unsubContent();
+        unsubServices();
+        unsubBrands();
+        unsubProjects();
+        unsubIndustries();
+    };
+  }, []);
+
+
+  // --- CRUD Operations (Writing to Firestore) ---
+
+  const updateContent = async (newContent: Partial<SiteContent>) => {
+    const docRef = doc(db, "content", "main");
+    await updateDoc(docRef, newContent);
+  };
+
+  const updateService = async (id: string, newService: Partial<Service>) => {
+    const docRef = doc(db, "services", id);
+    await updateDoc(docRef, newService);
+  };
 
   // Brand CRUD
-  const addBrand = (brand: Brand) => setBrands(prev => [...prev, brand]);
-  const updateBrand = (id: string, newBrand: Partial<Brand>) => setBrands(prev => prev.map(b => b.id === id ? { ...b, ...newBrand } : b));
-  const deleteBrand = (id: string) => setBrands(prev => prev.filter(b => b.id !== id));
+  const addBrand = async (brand: Brand) => {
+    // We let Firestore generate ID if not provided, but here we used custom IDs in previous code. 
+    // Best practice with Firestore is addDoc (auto-ID) or setDoc (custom ID).
+    // Let's use addDoc for simplicity, ignoring the passed 'id' if it's a timestamp.
+    await addDoc(collection(db, "brands"), { ...brand, id: undefined }); // Firestore assigns ID
+  };
+  
+  const updateBrand = async (id: string, newBrand: Partial<Brand>) => {
+    const docRef = doc(db, "brands", id);
+    await updateDoc(docRef, newBrand);
+  };
+
+  const deleteBrand = async (id: string) => {
+    await deleteDoc(doc(db, "brands", id));
+  };
 
   // Project CRUD
-  const addProject = (project: Project) => setProjects(prev => [...prev, project]);
-  const updateProject = (id: string, newProject: Partial<Project>) => setProjects(prev => prev.map(p => p.id === id ? { ...p, ...newProject } : p));
-  const deleteProject = (id: string) => setProjects(prev => prev.filter(p => p.id !== id));
+  const addProject = async (project: Project) => {
+    await addDoc(collection(db, "projects"), { ...project, id: undefined });
+  };
+
+  const updateProject = async (id: string, newProject: Partial<Project>) => {
+    const docRef = doc(db, "projects", id);
+    await updateDoc(docRef, newProject);
+  };
+
+  const deleteProject = async (id: string) => {
+    await deleteDoc(doc(db, "projects", id));
+  };
 
   return (
     <DataContext.Provider value={{ 
